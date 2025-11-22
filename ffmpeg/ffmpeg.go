@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	ffmpeg_go "github.com/u2takey/ffmpeg-go"
 )
@@ -34,31 +35,56 @@ func (s *FFmpegService) GetVideoDetails(path string) (*VideoData, error) {
 }
 
 func (s *FFmpegService) Transcode(input string, isPortrait bool) error {
+	inputDir := strings.Split(input, ".")[0]
+	os.Mkdir(inputDir, 0755)
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(VideoQualities))
+
 	for _, q := range VideoQualities {
-		inputDir := strings.Split(input, ".")[0]
-		os.Mkdir(inputDir, 0755)
-		qualityDir := filepath.Join(inputDir, "normal_hls", q.Name)
-		if err := os.MkdirAll(qualityDir, 0755); err != nil {
-			return fmt.Errorf("failed to create output dir %s: %w", qualityDir, err)
-		}
+		q := q
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-		segmentPath := filepath.Join(qualityDir, "%03d.ts")
-		playlistPath := filepath.Join(qualityDir, "index.m3u8")
-		scaleFilter := q.ScaleHorizontally()
-		if isPortrait {
-			scaleFilter = q.ScaleVertically()
-		}
-
-		cmd := ffmpeg_go.Input(input).Output(playlistPath, s.getFFmpegArgs(q, segmentPath, []string{scaleFilter, q.LandScape()}))
-
-		err := cmd.OverWriteOutput().WithOutput(nil, os.Stdout).Run()
-		if err != nil {
-			return fmt.Errorf("ffmpeg failed for quality %s: %w", q.Name, err)
-		}
+			if err := s.TranscodeQuality(input, inputDir, q, isPortrait); err != nil {
+				errCh <- err
+			}
+		}()
 	}
 
-	if err := s.generateMasterPlaylist(input); err != nil {
-		return fmt.Errorf("failed to generate master playlist: %w", err)
+	wg.Wait()
+
+	if len(errCh) > 0 {
+		var sb strings.Builder
+		for e := range errCh {
+			sb.WriteString(e.Error() + "\n")
+		}
+		return fmt.Errorf(sb.String())
+	}
+
+	return s.generateMasterPlaylist(input)
+
+}
+
+func (s *FFmpegService) TranscodeQuality(input, inputDir string, q VideoQuality, isPortrait bool) error {
+	qualityDir := filepath.Join(inputDir, "normal_hls", q.Name)
+	if err := os.MkdirAll(qualityDir, 0755); err != nil {
+		return err
+	}
+
+	segmentPath := filepath.Join(qualityDir, "%03d.ts")
+	playlistPath := filepath.Join(qualityDir, "index.m3u8")
+	scaleFilter := q.ScaleHorizontally()
+	if isPortrait {
+		scaleFilter = q.ScaleVertically()
+	}
+
+	cmd := ffmpeg_go.Input(input).Output(playlistPath, s.getFFmpegArgs(q, segmentPath, []string{scaleFilter, q.LandScape()}))
+
+	err := cmd.OverWriteOutput().WithOutput(nil, os.Stdout).Run()
+	if err != nil {
+		return err
 	}
 
 	return nil

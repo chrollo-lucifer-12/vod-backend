@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/chrollo-lucifer-12/vod/ffmpeg"
 )
@@ -15,9 +16,9 @@ type VideoUsecase struct {
 func NewVideoUsecase(ffmpeg *ffmpeg.FFmpegService) *VideoUsecase {
 	return &VideoUsecase{ffmpeg: ffmpeg}
 }
-
 func (uc *VideoUsecase) ProcessAndSave(filename string, r io.Reader) error {
-	file, err := os.Create(filename)
+	videoPath := filepath.Join("videos", filename)
+	file, err := os.Create(videoPath)
 	if err != nil {
 		return err
 	}
@@ -28,7 +29,7 @@ func (uc *VideoUsecase) ProcessAndSave(filename string, r io.Reader) error {
 		return err
 	}
 
-	videoDetails, err := uc.ffmpeg.GetVideoDetails(filename)
+	videoDetails, err := uc.ffmpeg.GetVideoDetails(videoPath)
 	if err != nil {
 		return err
 	}
@@ -37,8 +38,10 @@ func (uc *VideoUsecase) ProcessAndSave(filename string, r io.Reader) error {
 		return fmt.Errorf("no video details available")
 	}
 
+	fmt.Println("video details", videoDetails)
+
 	isPortrait := videoDetails.IsPortrait()
-	if err := uc.ffmpeg.Transcode(filename, isPortrait); err != nil {
+	if err := uc.ffmpeg.Transcode(videoPath, isPortrait); err != nil {
 		return err
 	}
 

@@ -3,17 +3,17 @@ package videocontroller
 import (
 	"net/http"
 
-	"github.com/chrollo-lucifer-12/vod/usecase"
+	"github.com/chrollo-lucifer-12/vod/queue"
 	"github.com/gin-gonic/gin"
 )
 
 type VideoController struct {
-	uc *usecase.VideoUsecase
+	q *queue.Queue
 }
 
-func NewVideoController(uc *usecase.VideoUsecase) *VideoController {
+func NewVideoController(q *queue.Queue) *VideoController {
 	return &VideoController{
-		uc: uc,
+		q: q,
 	}
 }
 
@@ -27,10 +27,7 @@ func (v *VideoController) UploadVideo(c *gin.Context) {
 
 	filename := header.Filename
 
-	if err := v.uc.ProcessAndSave(filename, file); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
+	v.q.AddTask(file, header)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Video uploaded successfully", "filename": filename})
 }
