@@ -1,10 +1,13 @@
 package ffmpeg
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	ffmpeg_go "github.com/u2takey/ffmpeg-go"
 )
@@ -32,7 +35,9 @@ func (s *FFmpegService) GetVideoDetails(path string) (*VideoData, error) {
 
 func (s *FFmpegService) Transcode(input string, isPortrait bool) error {
 	for _, q := range VideoQualities {
-		qualityDir := filepath.Join(input, "normal_hls", q.Name)
+		inputDir := strings.Split(input, ".")[0]
+		os.Mkdir(inputDir, 0755)
+		qualityDir := filepath.Join(inputDir, "normal_hls", q.Name)
 		if err := os.MkdirAll(qualityDir, 0755); err != nil {
 			return fmt.Errorf("failed to create output dir %s: %w", qualityDir, err)
 		}
@@ -83,4 +88,43 @@ func (s *FFmpegService) getFFmpegArgs(q VideoQuality, segmentPath string, filter
 		"vf":                   filters[0],
 		"s":                    filters[1],
 	}
+}
+
+func (s *FFmpegService) generateMasterPlaylist(input string) error {
+	inputDir := strings.TrimSuffix(input, filepath.Ext(input))
+	masterFilePath := filepath.Join(inputDir, "master.m3u8")
+
+	masterFile, err := os.Create(masterFilePath)
+	if err != nil {
+		return err
+	}
+	defer masterFile.Close()
+
+	writer := bufio.NewWriter(masterFile)
+	defer writer.Flush()
+
+	if _, err := writer.WriteString("#EXTM3U\n"); err != nil {
+		return err
+	}
+
+	for _, q := range VideoQualities {
+		bandwidth := extractBandwidth(q.Bitrate)
+		line := fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%s\n%s/index.m3u8\n", bandwidth, q.LandScape(), q.Name)
+		if _, err := writer.WriteString(line); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func extractBandwidth(bitrate string) int {
+	if strings.HasSuffix(bitrate, "k") {
+		bitrate = strings.TrimSuffix(bitrate, "k")
+	}
+	kbps, err := strconv.Atoi(bitrate)
+	if err != nil {
+		return 0
+	}
+	return kbps * 1000
 }

@@ -21,7 +21,11 @@ var VideoQualities = []VideoQuality{
 }
 
 func (vq VideoQuality) ScaleHorizontally() string {
-	return fmt.Sprintf("scale=w%d:h=%d:force_original_aspect_ratio=decrease", vq.Width, vq.Height)
+	return fmt.Sprintf(
+		"scale=w=%d:h=%d:force_original_aspect_ratio=decrease",
+		vq.Width,
+		vq.Height,
+	)
 }
 
 func (vq VideoQuality) ScaleVertically() string {
