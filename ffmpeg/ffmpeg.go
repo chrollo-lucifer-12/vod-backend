@@ -10,13 +10,16 @@ import (
 	"strings"
 	"sync"
 
+	minios3 "github.com/chrollo-lucifer-12/vod/minio"
 	ffmpeg_go "github.com/u2takey/ffmpeg-go"
 )
 
-type FFmpegService struct{}
+type FFmpegService struct {
+	client *minios3.Minio
+}
 
-func NewFFmpegService() *FFmpegService {
-	return &FFmpegService{}
+func NewFFmpegService(client *minios3.Minio) *FFmpegService {
+	return &FFmpegService{client: client}
 }
 
 func (s *FFmpegService) GetVideoDetails(path string) (*VideoData, error) {
@@ -63,8 +66,17 @@ func (s *FFmpegService) Transcode(input string, isPortrait bool) error {
 		return fmt.Errorf(sb.String())
 	}
 
-	return s.generateMasterPlaylist(input)
+	err := s.generateMasterPlaylist(input)
+	if err != nil {
+		return err
+	}
 
+	err = s.client.UploadFolderToMinio("videos", inputDir, inputDir)
+	if err != nil {
+		return fmt.Errorf("failed to upload hls to MinIO: %w", err)
+	}
+
+	return nil
 }
 
 func (s *FFmpegService) TranscodeQuality(input, inputDir string, q VideoQuality, isPortrait bool) error {
